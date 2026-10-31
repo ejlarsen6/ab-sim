@@ -21,10 +21,11 @@ baseball-simulation-engine/
 │
 ├── data/                      # Local data directory (statcast2026.rds)
 ├── scripts/                   # Modular R pipeline
-│   ├── 01_setup.R             # Environment setup, data cleaning, state engineering
-│   ├── 02_models.R            # glmmTMB 1-vs-rest model fitting
-│   ├── 03_functions.R         # Precomputed cache builder & simulation logic
-│   └── 04_analysis.R          # Execution, batch runs, and outcome analysis
+│   ├── setup.R             # Environment setup, data cleaning, state engineering
+│   ├── models.R            # glmmTMB 1-vs-rest model fitting
+│   ├── functions.R         # Precomputed cache builder & simulation logic
+│   ├── analysis.R          # Execution, batch runs, and outcome analysis
+|   └── download_data.R     # Downloads 2026 regular season Statcast data
 │
 ├── outputs/                   # Generated plots, heatmaps, and summaries
 ├── run_pipeline.R             # Master execution script
