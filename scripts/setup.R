@@ -11,7 +11,7 @@ Sys.setenv(OMP_NUM_THREADS = 1)
 available_cores <- availableCores() - 1
 plan(multisession, workers = 2)
 
-sc26 <- read_rds('./statcast2026.rds')
+sc26 <- read_rds('./data/statcast2026.rds')
 
 pitch_data <-
   sc26 |> 

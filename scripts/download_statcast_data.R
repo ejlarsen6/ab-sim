@@ -47,6 +47,6 @@ full_season_pbp <- future_map2_dfr(date_chunks$start, date_chunks$end, download_
 
 glimpse(full_season_pbp)
 
-# Saves full season RDS data to cwd
-saveRDS(full_season_pbp, "./statcast2026.rds")
+# Saves full season RDS data to data/ directory
+saveRDS(full_season_pbp, "../data/statcast2026.rds")
 

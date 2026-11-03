@@ -47,3 +47,26 @@ validation_df <- sim_summary |>
   select(Outcome, Simulated_Pct, Actual_Pct)
 
 print(validation_df)
+
+pitcher_effects_long <- imap_dfr(models, function(mod, outcome_name) {
+  re_df <- ranef(mod)[[1]]
+  
+  tibble(
+    pitcher = rownames(re),
+    outcome = outcome_name,
+    random_intercept = re$`(Intercept)`
+  )
+})
+
+pitcher_effects_wide <- pitcher_effects_long |> 
+  pivot_wider(
+    names_from = outcome, 
+    values_from = random_intercept
+  ) |> 
+  mutate(pitcher = as.numeric(pitcher))
+
+pitcher_summary_table <- pitcher_effects_wide |> 
+  left_join(players, by = c("pitcher" = "key_mlbam")) |> 
+  select(pitcher, name_full, everything())
+
+head(pitcher_summary_table)
