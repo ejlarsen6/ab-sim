@@ -4,6 +4,7 @@ library(purrr)
 library(glmmTMB)
 library(furrr)
 library(RhpcBLASctl)
+library(baseballr)
 
 RhpcBLASctl::blas_set_num_threads(1)
 Sys.setenv(OMP_NUM_THREADS = 1)

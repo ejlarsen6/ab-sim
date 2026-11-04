@@ -77,7 +77,7 @@ pitcher_effects_long <- imap_dfr(models, function(mod, outcome_name) {
     ) |> 
     select(pitcher, outcome, random_intercept)
 })
-
+ 
 pitcher_effects_wide <- pitcher_effects_long |> 
   pivot_wider(
     names_from = outcome, 
