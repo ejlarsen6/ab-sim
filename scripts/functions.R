@@ -1,4 +1,4 @@
-build_matchup_cache <- function(pitcher_id, batter_id, pitch_choice_models, outcome_models, ref_data, common_pitches) {
+build_matchup_cache <- function(pitcher_id, pitch_choice_models, outcome_models, ref_data, common_pitches) {
   
   counts <- c("0-0", "0-1", "0-2", "1-0", "1-1", "1-2", "2-0", "2-1", "2-2", "3-0", "3-1", "3-2")
   prev_pitches <- c("NONE", common_pitches)
@@ -27,8 +27,7 @@ build_matchup_cache <- function(pitcher_id, batter_id, pitch_choice_models, outc
     prev_pitch_type = prev_pitches,
     stringsAsFactors = FALSE
   ) |> mutate(
-    pitcher = factor(pitcher_id, levels = levels(ref_data$pitcher)),
-    batter = factor(batter_id, levels = levels(ref_data$batter))
+    pitcher = factor(pitcher_id, levels = levels(ref_data$pitcher))
   )
   
   outcome_preds <- map_dfc(names(outcome_models), function(out_name) {
@@ -94,6 +93,6 @@ simulate_at_bat <- function(cache, common_pitches) {
       return("Out")
     }
     prev_pitch <- curr_pitch
-    cat("Pitch thrown:", curr_pitch, "| Result:", outcome_sampled, "| Count:", count_str, "\n")
+    # cat("Pitch thrown:", curr_pitch, "| Result:", outcome_sampled, "| Count:", count_str, "\n")
   }
 }

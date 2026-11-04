@@ -1,9 +1,26 @@
-sample_pitcher_id <- pitch_data |> count(pitcher, sort = TRUE) |> slice(1) |> pull(pitcher) |> as.character()
-sample_batter_id  <- pitch_data |> count(batter, sort = TRUE) |> slice(1) |> pull(batter) |> as.character()
+library(baseballr)
+
+players <-
+  chadwick_player_lu() |> 
+  filter(mlb_played_first >= 2010) |> 
+  mutate(
+    name_full = paste(name_first, name_last)
+  ) |> 
+  select(key_mlbam, name_full)
+
+get_player_id <- function(full_name) {
+  id <-
+    players |> 
+    filter(name_full == full_name) |> 
+    pull(key_mlbam)
+  return(id)
+}
+
+sample_pitcher_id <- get_player_id("Aaron Ashby")
 
 cat("Building matchup probability cache...\n")
 matchup_cache <- build_matchup_cache(
-  sample_pitcher_id, sample_batter_id, 
+  sample_pitcher_id, 
   pitch_choice_models, models, pitch_data, common_pitches
 )
 
@@ -51,11 +68,14 @@ print(validation_df)
 pitcher_effects_long <- imap_dfr(models, function(mod, outcome_name) {
   re_df <- ranef(mod)[[1]]
   
-  tibble(
-    pitcher = rownames(re),
-    outcome = outcome_name,
-    random_intercept = re$`(Intercept)`
-  )
+  re_df |> 
+    as.data.frame() |> 
+    rownames_to_column(var = "pitcher") |> 
+    mutate(
+      outcome = outcome_name,
+      random_intercept = `X.Intercept.`
+    ) |> 
+    select(pitcher, outcome, random_intercept)
 })
 
 pitcher_effects_wide <- pitcher_effects_long |> 
@@ -68,5 +88,7 @@ pitcher_effects_wide <- pitcher_effects_long |>
 pitcher_summary_table <- pitcher_effects_wide |> 
   left_join(players, by = c("pitcher" = "key_mlbam")) |> 
   select(pitcher, name_full, everything())
+
+head(pitcher_summary_table |> filter(!is.na(name_full)))
 
 head(pitcher_summary_table)

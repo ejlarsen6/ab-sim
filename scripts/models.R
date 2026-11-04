@@ -3,7 +3,7 @@ models <- map(outcomes, function(out) {
   
   glmmTMB(
     target ~ count_state + pitch_type + prev_pitch_type +
-      (1 | pitcher) + (1 | batter),
+      (1 | pitcher),
     data = df,
     family = binomial(link = "logit")
   )
