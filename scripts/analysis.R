@@ -1,71 +1,16 @@
-library(baseballr)
-
-players <-
-  chadwick_player_lu() |> 
-  filter(mlb_played_first >= 2010) |> 
-  mutate(
-    name_full = paste(name_first, name_last)
-  ) |> 
-  select(key_mlbam, name_full)
-
-get_player_id <- function(full_name) {
-  id <-
-    players |> 
-    filter(name_full == full_name) |> 
-    pull(key_mlbam)
-  return(id)
-}
+N_SIMS = 1000
 
 sample_pitcher_id <- get_player_id("Aaron Ashby")
+cubs_lineup <- get_team_lineup("CHC", pitch_data)
+
 
 cat("Building matchup probability cache...\n")
 matchup_cache <- build_matchup_cache(
   sample_pitcher_id, 
-  pitch_choice_models, models, pitch_data, common_pitches
+  pitch_choice_models, outcome_models, pitch_data, common_pitches
 )
 
-N_SIMS <- 1000
-cat("Running", N_SIMS, "simulations using cache...\n")
-
-set.seed(441)
-start_time <- Sys.time()
-batch_results <- replicate(N_SIMS, simulate_at_bat(matchup_cache, common_pitches))
-end_time <- Sys.time()
-
-print(end_time - start_time)
-print(table(batch_results) / N_SIMS)
-
-N_SIMS <- 5000
-set.seed(441)
-sim_results <- replicate(N_SIMS, simulate_at_bat(matchup_cache, common_pitches))
-
-sim_summary <- tibble(Outcome = sim_results) |> 
-  count(Outcome) |> 
-  mutate(Simulated_Pct = n / N_SIMS)
-
-real_summary <- pitch_data |> 
-  filter(pitcher == sample_pitcher_id, batter == sample_batter_id) |> 
-  group_by(game_pk, at_bat_number) |> 
-  filter(pitch_number == max(pitch_number)) |> 
-  ungroup() |> 
-  mutate(Macro_Outcome = case_when(
-    events %in% c("strikeout", "strikeout_looking") ~ "Strikeout",
-    events %in% c("walk", "intent_walk") ~ "Walk",
-    events %in% c("single", "double", "triple", "home_run") ~ "Hit",
-    events %in% c("field_out", "force_out", "grounded_into_double_play", "sac_fly") ~ "Out",
-    TRUE ~ NA_character_
-  )) |> 
-  filter(!is.na(Macro_Outcome)) |> 
-  count(Macro_Outcome) |> 
-  mutate(Actual_Pct = n / sum(n))
-
-validation_df <- sim_summary |> 
-  left_join(real_summary, by = c("Outcome" = "Macro_Outcome")) |> 
-  select(Outcome, Simulated_Pct, Actual_Pct)
-
-print(validation_df)
-
-pitcher_effects_long <- imap_dfr(models, function(mod, outcome_name) {
+pitcher_effects_long <- imap_dfr(outcome_models, function(mod, outcome_name) {
   re_df <- ranef(mod)[[1]]
   
   re_df |> 
@@ -92,3 +37,40 @@ pitcher_summary_table <- pitcher_effects_wide |>
 head(pitcher_summary_table |> filter(!is.na(name_full)))
 
 head(pitcher_summary_table)
+
+cat("Building matchup cache for pitcher:", sample_pitcher_id, "...\n")
+pitcher_cache <- build_matchup_cache(
+  pitcher_id = sample_pitcher_id,
+  pitch_choice_models = pitch_choice_models,
+  outcome_models = outcome_models,
+  ref_data = pitch_data,
+  common_pitches = common_pitches
+)
+
+# Run 1,000 half-inning simulations
+set.seed(2026)
+cat("Running", N_SIMS, "half-inning simulations...\n")
+
+simulation_results <- map_dbl(1:N_SIMS, function(i) {
+  if (i %% 100 == 0) cat("Simulation batch:", i, "/", N_SIMS, "\n")
+  
+  simulate_half_inning(
+    pitcher_cache = pitcher_cache,
+    common_pitches = common_pitches,
+    lineup_batter_ids = cubs_lineup
+  )
+})
+
+# Calculate Summary Statistics
+inning_summary <- tibble(runs = simulation_results) |> 
+  summarise(
+    mean_runs         = mean(runs),
+    median_runs       = median(runs),
+    sd_runs           = sd(runs),
+    prob_score_0      = mean(runs == 0),
+    prob_score_1      = mean(runs == 1),
+    prob_score_2_plus = mean(runs >= 2),
+    max_runs_recorded = max(runs)
+  )
+
+print(inning_summary)

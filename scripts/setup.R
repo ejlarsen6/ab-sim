@@ -5,12 +5,13 @@ library(glmmTMB)
 library(furrr)
 library(RhpcBLASctl)
 library(baseballr)
+library(nnet)
 
-RhpcBLASctl::blas_set_num_threads(1)
-Sys.setenv(OMP_NUM_THREADS = 1)
-
-available_cores <- availableCores() - 1
-plan(multisession, workers = 2)
+# RhpcBLASctl::blas_set_num_threads(1)
+# Sys.setenv(OMP_NUM_THREADS = 1)
+# 
+# available_cores <- availableCores() - 1
+# plan(multisession, workers = 2)
 
 sc26 <- read_rds('./data/statcast2026.rds')
 
@@ -29,17 +30,27 @@ pitch_data <-
     prev_pitch_type = lag(pitch_type, default = "NONE"),
     
     outcome = case_when(
-      description %in% c("called_strike") ~ "called_strike",
-      description %in% c("swinging_strike", "foul_tip", "swinging_strike_blocked") ~ "whiff",
-      description %in% c("ball", "blocked_ball") ~ "ball",
-      description %in% c("foul") ~ "foul",
-      events %in% c("single", "double", "triple", "home_run") ~ "hit",
-      events %in% c("field_out", "force_out", "grounded_into_double_play", "sac_fly") ~ "in_play_out",
-      TRUE ~ "foul"
+      description == "called_strike" ~ "called_strike",
+      description %in% c("swinging_strike", "swinging_strike_blocked") ~ "whiff",
+      description == "ball" ~ "ball",
+      description == "foul" ~ "foul",
+      
+      description == "hit_into_play" ~ case_when(
+        events == "single" ~ "single",
+        events == "double" ~ "double",
+        events == "triple" ~ "triple",
+        events == "home_run" ~ "home_run",
+        events %in% c("field_out", "force_out", "grounded_into_double_play", "fielders_choice") ~ "field_out",
+        TRUE ~ "field_out" # Catch-all fallback for rare batted ball events
+      ),
+      events == "walk" ~ "ball",
+      events == "strikeout" ~ "whiff",
+      
+      TRUE ~ NA_character_
     )
   ) |> 
   ungroup() |> 
-  filter(count_balls < 4, count_strikes < 3) |> 
+  filter(count_balls < 4, count_strikes < 3, !is.na(outcome)) |> 
   mutate(
     outcome = relevel(factor(outcome), ref = 'ball'),
     pitcher = as.factor(pitcher),
@@ -48,7 +59,10 @@ pitch_data <-
     prev_pitch_type = as.factor(prev_pitch_type)
   )
 
-outcomes <- c("called_strike", "whiff", "ball", "foul", "hit", "in_play_out")
+outcomes <- c(
+  "called_strike", "whiff", "ball", "foul", 
+  "single", "double", "triple", "home_run", "field_out"
+)
 
 common_pitches <- pitch_data |> 
   count(pitch_type, sort = TRUE) |> 
@@ -57,4 +71,20 @@ common_pitches <- pitch_data |>
   as.character()
 
 pitch_data_filtered <- pitch_data |> 
-  filter(pitch_type %in% common_pitches)
+  filter(pitch_type %in% common_pitches) |> 
+  mutate(outs_state = outs_when_up,
+         first = as.integer(!is.na(on_1b)),
+         second = as.integer(!is.na(on_2b)),
+         third = as.integer(!is.na(on_3b)),
+         ) |> 
+  mutate(
+    base_state = paste(first,second,third)
+  )
+
+players <-
+  chadwick_player_lu() |> 
+  filter(mlb_played_first >= 2000) |> 
+  mutate(
+    name_full = paste(name_first, name_last)
+  ) |> 
+  select(key_mlbam, name_full)
