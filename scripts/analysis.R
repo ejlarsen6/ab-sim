@@ -51,26 +51,23 @@ pitcher_cache <- build_matchup_cache(
 set.seed(2026)
 cat("Running", N_SIMS, "half-inning simulations...\n")
 
-simulation_results <- map_dbl(1:N_SIMS, function(i) {
+raw_sim_results <- map(1:N_SIMS, function(i) {
   if (i %% 100 == 0) cat("Simulation batch:", i, "/", N_SIMS, "\n")
   
-  simulate_half_inning(
+  # Run half-inning and tag log with simulation index
+  res <- simulate_half_inning(
     pitcher_cache = pitcher_cache,
     common_pitches = common_pitches,
     lineup_batter_ids = cubs_lineup
   )
+  
+  # Add sim_id to log for post-hoc grouping
+  res$log <- res$log |> mutate(sim_id = i, .before = 1)
+  
+  return(res)
 })
 
-# Calculate Summary Statistics
-inning_summary <- tibble(runs = simulation_results) |> 
-  summarise(
-    mean_runs         = mean(runs),
-    median_runs       = median(runs),
-    sd_runs           = sd(runs),
-    prob_score_0      = mean(runs == 0),
-    prob_score_1      = mean(runs == 1),
-    prob_score_2_plus = mean(runs >= 2),
-    max_runs_recorded = max(runs)
-  )
+runs_vector <- map_dbl(raw_sim_results, "runs")
+master_pitch_log <- map_dfr(raw_sim_results, "log")
 
-print(inning_summary)
+

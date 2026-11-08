@@ -180,53 +180,46 @@ build_matchup_cache <- function(pitcher_id, pitch_choice_models, outcome_models,
 simulate_half_inning <- function(pitcher_cache, common_pitches, lineup_batter_ids = 1:9) {
   outs <- 0
   runs <- 0
-  bases <- c(0, 0, 0) # Index 1 = 1st base, Index 2 = 2nd base, Index 3 = 3rd base
+  bases <- c(0, 0, 0)
   batter_idx <- 1
+  pa_counter <- 1
+  inning_logs <- list()
   
   while (outs < 3) {
-    # Lineup tracking 
     current_batter_id <- lineup_batter_ids[((batter_idx - 1) %% length(lineup_batter_ids)) + 1]
-  
-    ab_result <- simulate_at_bat(pitcher_cache, common_pitches)
     
+    ab_result <- simulate_at_bat(pitcher_cache, common_pitches, current_batter_id)
     event <- ab_result$event
     
+    pa_log <- ab_result$log |> mutate(pa_number = pa_counter, outs_before = outs)
+    inning_logs[[pa_counter]] <- pa_log
+    
+    # Base running & scoring logic
     if (event == "Walk") {
-      if (bases[1] == 0) {
-        bases[1] <- 1
-      } else if (bases[2] == 0) {
-        bases[2] <- 1
-      } else if (bases[3] == 0) {
-        bases[3] <- 1
-      } else {
-        runs <- runs + 1
-      }
+      if (bases[1] == 0) bases[1] <- 1
+      else if (bases[2] == 0) bases[2] <- 1
+      else if (bases[3] == 0) bases[3] <- 1
+      else runs <- runs + 1
     } else if (event == "Single") {
-      runs <- runs + bases[3]
-      bases[3] <- bases[2]
-      bases[2] <- bases[1]
-      bases[1] <- 1
+      runs <- runs + bases[3]; bases[3] <- bases[2]; bases[2] <- bases[1]; bases[1] <- 1
     } else if (event == "Double") {
-      runs <- runs + bases[3] + bases[2]
-      bases[3] <- bases[1]
-      bases[2] <- 1
-      bases[1] <- 0
+      runs <- runs + bases[3] + bases[2]; bases[3] <- bases[1]; bases[2] <- 1; bases[1] <- 0
     } else if (event == "Triple") {
-      runs <- runs + sum(bases)
-      bases[3] <- 1
-      bases[2] <- 0
-      bases[1] <- 0
+      runs <- runs + sum(bases); bases[3] <- 1; bases[2] <- 0; bases[1] <- 0
     } else if (event == "Home_Run") {
-      runs <- runs + sum(bases) + 1
-      bases <- c(0, 0, 0)
+      runs <- runs + sum(bases) + 1; bases <- c(0, 0, 0)
     } else if (event %in% c("Strikeout", "Field_Out")) {
       outs <- outs + 1
     }
     
     batter_idx <- batter_idx + 1
+    pa_counter <- pa_counter + 1
   }
   
-  return(runs)
+  list(
+    runs = runs,
+    log  = bind_rows(inning_logs)
+  )
 }
 
 get_player_id <- function(full_name) {
