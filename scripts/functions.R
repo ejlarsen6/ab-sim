@@ -223,11 +223,9 @@ simulate_half_inning <- function(pitcher_cache, common_pitches, lineup_batter_id
   while (outs < 3) {
     current_batter_id <- lineup_batter_ids[((batter_idx - 1) %% length(lineup_batter_ids)) + 1]
     
-    # Simulate at-bat and grab log
     ab_result <- simulate_at_bat(pitcher_cache, common_pitches, current_batter_id)
     event <- ab_result$event
     
-    # Tag log rows with plate appearance number and outs state
     pa_log <- ab_result$log |> mutate(pa_number = pa_counter, outs_before = outs)
     inning_logs[[pa_counter]] <- pa_log
     
