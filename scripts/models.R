@@ -1,4 +1,3 @@
-
 outcome_models <- map(outcomes, function(out) {
   df <- pitch_data %>% mutate(target = ifelse(outcome == out, 1, 0))
 
