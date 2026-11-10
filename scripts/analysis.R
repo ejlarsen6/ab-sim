@@ -70,4 +70,7 @@ raw_sim_results <- map(1:N_SIMS, function(i) {
 runs_vector <- map_dbl(raw_sim_results, "runs")
 master_pitch_log <- map_dfr(raw_sim_results, "log")
 
-
+master_pitch_log |> 
+  count(count_before, pitch_type) |> 
+  group_by(count_before) |> 
+  mutate(pct = n / sum(n))
