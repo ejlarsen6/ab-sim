@@ -21,66 +21,6 @@ predict_normalized <- function(models_list, newdata) {
 }
 
 build_matchup_cache <- function(pitcher_id, pitch_choice_models, outcome_models, ref_data, common_pitches) {
-  count_states <- c("0-0", "0-1", "0-2", "1-0", "1-1", "1-2", "2-0", "2-1", "2-2", "3-0", "3-1", "3-2")
-  outs_states  <- c(0, 1, 2)
-  base_states  <- c("000", "100", "010", "001", "110", "101", "011", "111")
-  
-  # Get pitch types this specific pitcher actually throws, restricted to common pitches
-  pitcher_pitches <- ref_data |> 
-    filter(pitcher == pitcher_id) |> 
-    pull(pitch_type) |> 
-    unique()
-  
-  valid_pitches <- intersect(pitcher_pitches, common_pitches)
-  if (length(valid_pitches) == 0) valid_pitches <- common_pitches # Fallback
-  
-  outcome_grid <- expand_grid(
-    count_state = count_states,
-    outs_state = outs_states,
-    base_state = base_states,
-    pitch_type = valid_pitches,
-    prev_pitch_type = c("NONE", valid_pitches),
-    pitcher = pitcher_id
-  ) |> 
-    mutate(
-      count_state = factor(count_state, levels = count_states),
-      outs_state = factor(outs_state, levels = outs_states),
-      base_state = factor(base_state, levels = base_states),
-      pitch_type = factor(pitch_type, levels = common_pitches),
-      prev_pitch_type = factor(prev_pitch_type, levels = c("NONE", common_pitches)),
-      pitcher = factor(pitcher)
-    )
-  
-  raw_outcome_preds <- map_dfc(names(outcome_models), function(mod_name) {
-    mod <- outcome_models[[mod_name]]
-    
-    preds <- tryCatch({
-      predict(mod, newdata = outcome_grid, type = "response", allow.new.levels = TRUE)
-    }, error = function(e) {
-      predict(mod, newdata = outcome_grid, type = "response", re.form = NA)
-    })
-    
-    # Ensure returns the correct length (fallback to zeros if something went wrong)
-    if (is.null(preds) || length(preds) != nrow(outcome_grid)) {
-      preds <- rep(0, nrow(outcome_grid))
-    }
-    
-    tibble(!!mod_name := as.numeric(preds))
-  })
-  
-  row_sums <- rowSums(raw_outcome_preds)
-  row_sums[row_sums == 0] <- 1
-  norm_outcome_preds <- raw_outcome_preds |> mutate(across(everything(), ~ .x / row_sums))
-  
-  outcome_cache <- bind_cols(outcome_grid, norm_outcome_preds)
-  
-  list(
-    outcome = outcome_cache,
-    pitch = outcome_cache 
-  )
-}
-
-build_matchup_cache <- function(pitcher_id, pitch_choice_models, outcome_models, ref_data, common_pitches) {
   
   # Define states
   count_states <- c("0-0", "0-1", "0-2", "1-0", "1-1", "1-2", "2-0", "2-1", "2-2", "3-0", "3-1", "3-2")
@@ -170,6 +110,138 @@ build_matchup_cache <- function(pitcher_id, pitch_choice_models, outcome_models,
     stage1 = stage1_cache,
     stage2 = stage2_cache
   )
+}
+
+simulate_at_bat <- function(cache, common_pitches, batter_id) {
+  balls <- 0
+  strikes <- 0
+  prev_pitch <- "NONE"
+  pitch_sequence <- list()
+  pitch_num <- 1
+  
+  # Available pitch names present in the pitch cache
+  cache_pitch_cols <- colnames(cache$pitch)[colnames(cache$pitch) %in% common_pitches]
+  if (length(cache_pitch_cols) == 0) cache_pitch_cols <- common_pitches
+  
+  stage1_list <- c("ball", "called_strike", "whiff", "foul", "in_play")
+  stage2_list <- c("single", "double", "triple", "home_run", "field_out")
+  
+  while (TRUE) {
+    count_str <- paste0(balls, "-", strikes)
+    
+    # Sample Pitch Choice
+    row_match <- cache$pitch |> 
+      filter(count_state == count_str, prev_pitch_type == prev_pitch)
+    
+    valid_cols <- intersect(cache_pitch_cols, colnames(row_match))
+    
+    if (nrow(row_match) > 0 && length(valid_cols) > 0) {
+      raw_pitch_probs <- as.numeric(row_match[1, valid_cols])
+      names(raw_pitch_probs) <- valid_cols
+    } else {
+      raw_pitch_probs <- numeric(0)
+    }
+    
+    if (length(raw_pitch_probs) == 0 || any(is.na(raw_pitch_probs)) || sum(raw_pitch_probs) == 0) {
+      pitch_probs <- rep(1 / length(common_pitches), length(common_pitches))
+      names(pitch_probs) <- common_pitches
+    } else {
+      pitch_probs <- raw_pitch_probs / sum(raw_pitch_probs)
+    }
+    
+    curr_pitch <- sample(names(pitch_probs), size = 1, prob = pitch_probs)
+    
+    # Pitch Result
+    s1_match <- cache$stage1 |> 
+      filter(count_state == count_str, pitch_type == curr_pitch, prev_pitch_type == prev_pitch)
+    
+    valid_s1_cols <- intersect(stage1_list, colnames(s1_match))
+    
+    if (nrow(s1_match) > 0 && length(valid_s1_cols) > 0) {
+      raw_s1_probs <- as.numeric(s1_match[1, valid_s1_cols])
+      names(raw_s1_probs) <- valid_s1_cols
+    } else {
+      raw_s1_probs <- numeric(0)
+    }
+    
+    if (length(raw_s1_probs) == 0 || any(is.na(raw_s1_probs)) || sum(raw_s1_probs) == 0) {
+      s1_probs <- rep(1 / length(stage1_list), length(stage1_list))
+      names(s1_probs) <- stage1_list
+    } else {
+      s1_probs <- raw_s1_probs / sum(raw_s1_probs)
+    }
+    
+    s1_sampled <- sample(names(s1_probs), size = 1, prob = s1_probs)
+    
+    count_before <- count_str
+    terminal_event <- NULL
+    bip_sampled <- NA
+    
+    if (s1_sampled == "ball") {
+      balls <- balls + 1
+      if (balls == 4) terminal_event <- "Walk"
+    } else if (s1_sampled %in% c("called_strike", "whiff")) {
+      strikes <- strikes + 1
+      if (strikes == 3) terminal_event <- "Strikeout"
+    } else if (s1_sampled == "foul") {
+      if (strikes < 2) strikes <- strikes + 1
+    } else if (s1_sampled == "in_play") {
+      # Stage 2: Batted-Ball Sub-Model
+      s2_match <- cache$stage2 |> 
+        filter(count_state == count_str, pitch_type == curr_pitch, prev_pitch_type == prev_pitch)
+      
+      valid_s2_cols <- intersect(stage2_list, colnames(s2_match))
+      
+      if (nrow(s2_match) > 0 && length(valid_s2_cols) > 0) {
+        raw_s2_probs <- as.numeric(s2_match[1, valid_s2_cols])
+        names(raw_s2_probs) <- valid_s2_cols
+      } else {
+        raw_s2_probs <- numeric(0)
+      }
+      
+      if (length(raw_s2_probs) == 0 || any(is.na(raw_s2_probs)) || sum(raw_s2_probs) == 0) {
+        s2_probs <- rep(1 / length(stage2_list), length(stage2_list))
+        names(s2_probs) <- stage2_list
+      } else {
+        s2_probs <- raw_s2_probs / sum(raw_s2_probs)
+      }
+      
+      bip_sampled <- sample(names(s2_probs), size = 1, prob = s2_probs)
+      
+      if (bip_sampled == "single") {
+        terminal_event <- "Single"
+      } else if (bip_sampled == "double") {
+        terminal_event <- "Double"
+      } else if (bip_sampled == "triple") {
+        terminal_event <- "Triple"
+      } else if (bip_sampled == "home_run") {
+        terminal_event <- "Home_Run"
+      } else if (bip_sampled == "field_out") {
+        terminal_event <- "Field_Out"
+      }
+    }
+    
+    pitch_sequence[[pitch_num]] <- tibble(
+      batter_id    = batter_id,
+      pitch_num    = pitch_num,
+      prev_pitch   = prev_pitch,
+      pitch_type   = curr_pitch,
+      count_before = count_before,
+      outcome      = s1_sampled,
+      bip_outcome  = ifelse(is.na(bip_sampled), "none", bip_sampled),
+      pa_result    = ifelse(is.null(terminal_event), "In_Progress", terminal_event)
+    )
+    
+    if (!is.null(terminal_event)) {
+      return(list(
+        event = terminal_event,
+        log   = bind_rows(pitch_sequence)
+      ))
+    }
+    
+    prev_pitch <- curr_pitch
+    pitch_num <- pitch_num + 1
+  }
 }
 
 simulate_half_inning <- function(pitcher_cache, common_pitches, lineup_batter_ids = 1:9) {
