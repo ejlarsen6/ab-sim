@@ -20,12 +20,7 @@ predict_normalized <- function(models_list, newdata) {
   return(norm_preds)
 }
 
-build_matchup_cache <- function(pitcher_id, pitch_choice_models, outcome_models, ref_data, common_pitches) {
-  
-  # Define states
-  count_states <- c("0-0", "0-1", "0-2", "1-0", "1-1", "1-2", "2-0", "2-1", "2-2", "3-0", "3-1", "3-2")
-  outs_states  <- c(0, 1, 2)
-  base_states  <- c("000", "100", "010", "001", "110", "101", "011", "111")
+build_matchup_cache <- function(pitcher_id, pitch_choice_models, stage1_models, stage2_models, ref_data, common_pitches) {
   
   pitcher_pitches <- ref_data |> 
     filter(pitcher == pitcher_id) |> 
@@ -35,7 +30,7 @@ build_matchup_cache <- function(pitcher_id, pitch_choice_models, outcome_models,
   valid_pitches <- intersect(pitcher_pitches, common_pitches)
   if (length(valid_pitches) == 0) valid_pitches <- common_pitches
   
-  # Pitch Choice Cache
+  # Pitch Choice Grid
   pitch_grid <- expand_grid(
     count_state = count_states,
     outs_state = outs_states,
@@ -51,7 +46,6 @@ build_matchup_cache <- function(pitcher_id, pitch_choice_models, outcome_models,
       pitcher = factor(pitcher)
     )
   
-  # Predict probabilities for each pitch type model
   raw_pitch_preds <- map_dfc(names(pitch_choice_models), function(mod_name) {
     mod <- pitch_choice_models[[mod_name]]
     preds <- tryCatch({
@@ -59,45 +53,35 @@ build_matchup_cache <- function(pitcher_id, pitch_choice_models, outcome_models,
     }, error = function(e) {
       predict(mod, newdata = pitch_grid, type = "response", re.form = NA)
     })
-    if (is.null(preds) || length(preds) != nrow(pitch_grid)) preds <- rep(0, nrow(pitch_grid))
     tibble(!!mod_name := as.numeric(preds))
   })
   
-  # Normalize row-wise so pitch choice probabilities sum to 1.0
   pitch_row_sums <- rowSums(raw_pitch_preds)
   pitch_row_sums[pitch_row_sums == 0] <- 1
   norm_pitch_preds <- raw_pitch_preds |> mutate(across(everything(), ~ .x / pitch_row_sums))
-  
   pitch_cache <- bind_cols(pitch_grid, norm_pitch_preds)
   
-  # Outcome Cache
-  outcome_grid <- expand_grid(
+  # Stages 1 & 2 Outcome Grid
+  stage1_grid <- expand_grid(
     count_state = count_states,
-    outs_state = outs_states,
-    base_state = base_states,
     pitch_type = valid_pitches,
     prev_pitch_type = c("NONE", valid_pitches),
     pitcher = pitcher_id
   ) |> 
     mutate(
       count_state = factor(count_state, levels = count_states),
-      outs_state = factor(outs_state, levels = outs_states),
-      base_state = factor(base_state, levels = base_states),
       pitch_type = factor(pitch_type, levels = common_pitches),
       prev_pitch_type = factor(prev_pitch_type, levels = c("NONE", common_pitches)),
       pitcher = factor(pitcher)
     )
   
-  # Predict probabilities for first stage outcomes
   raw_s1 <- map_dfc(names(stage1_models), function(m) {
     preds <- predict(stage1_models[[m]], newdata = stage1_grid, type = "response", allow.new.levels = TRUE)
     tibble(!!m := as.numeric(preds))
   })
-  # Normalize row-wise so outcome probabilities sum to 1
   s1_sums <- rowSums(raw_s1); s1_sums[s1_sums == 0] <- 1
   stage1_cache <- bind_cols(stage1_grid, raw_s1 |> mutate(across(everything(), ~ .x / s1_sums)))
   
-  # Probabilities for second stage outcomes
   raw_s2 <- map_dfc(names(stage2_models), function(m) {
     preds <- predict(stage2_models[[m]], newdata = stage1_grid, type = "response", allow.new.levels = TRUE)
     tibble(!!m := as.numeric(preds))
@@ -324,3 +308,4 @@ get_team_lineup <- function(team_abbr, ref_data, n = 9) {
   
   return(lineup_ids)
 }
+

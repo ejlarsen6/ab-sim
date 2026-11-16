@@ -7,12 +7,6 @@ library(RhpcBLASctl)
 library(baseballr)
 library(nnet)
 
-# RhpcBLASctl::blas_set_num_threads(1)
-# Sys.setenv(OMP_NUM_THREADS = 1)
-# 
-# available_cores <- availableCores() - 1
-# plan(multisession, workers = 2)
-
 sc26 <- read_rds('./data/statcast2026.rds')
 
 pitch_data <-
@@ -70,8 +64,17 @@ common_pitches <- pitch_data |>
   pull(pitch_type) |> 
   as.character()
 
+valid_pitchers <-
+  pitch_data |> 
+  group_by(pitcher) |> 
+  summarize(n = n(), .groups = "drop") |> 
+  filter(n >= 150) |> # Only pitchers with at least ~ 10 innings
+  pull(pitcher) |> 
+  unique()
+
 pitch_data_filtered <- pitch_data |> 
   filter(pitch_type %in% common_pitches) |> 
+  filter(pitcher %in% valid_pitchers) |> 
   mutate(outs_state = outs_when_up,
          first = as.integer(!is.na(on_1b)),
          second = as.integer(!is.na(on_2b)),

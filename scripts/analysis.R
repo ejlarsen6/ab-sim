@@ -5,12 +5,16 @@ cubs_lineup <- get_team_lineup("CHC", pitch_data)
 
 
 cat("Building matchup probability cache...\n")
-matchup_cache <- build_matchup_cache(
-  sample_pitcher_id, 
-  pitch_choice_models, outcome_models, pitch_data, common_pitches
+pitcher_cache <- build_matchup_cache(
+  pitcher_id = sample_pitcher_id, 
+  pitch_choice_models = pitch_choice_models, 
+  stage1_models = stage1_models, 
+  stage2_models = stage2_models, 
+  ref_data = pitch_data_filtered, 
+  common_pitches = common_pitches
 )
 
-pitcher_effects_long <- imap_dfr(outcome_models, function(mod, outcome_name) {
+pitcher_effects_long <- imap_dfr(stage2_models, function(mod, outcome_name) {
   re_df <- ranef(mod)[[1]]
   
   re_df |> 
@@ -40,10 +44,11 @@ head(pitcher_summary_table)
 
 cat("Building matchup cache for pitcher:", sample_pitcher_id, "...\n")
 pitcher_cache <- build_matchup_cache(
-  pitcher_id = sample_pitcher_id,
-  pitch_choice_models = pitch_choice_models,
-  outcome_models = outcome_models,
-  ref_data = pitch_data,
+  pitcher_id = sample_pitcher_id, 
+  pitch_choice_models = pitch_choice_models, 
+  stage1_models = stage1_models, 
+  stage2_models = stage2_models, 
+  ref_data = pitch_data_filtered, 
   common_pitches = common_pitches
 )
 
