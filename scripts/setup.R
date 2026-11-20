@@ -28,15 +28,7 @@ pitch_data <-
       description %in% c("swinging_strike", "swinging_strike_blocked") ~ "whiff",
       description == "ball" ~ "ball",
       description == "foul" ~ "foul",
-      
-      description == "hit_into_play" ~ case_when(
-        events == "single" ~ "single",
-        events == "double" ~ "double",
-        events == "triple" ~ "triple",
-        events == "home_run" ~ "home_run",
-        events %in% c("field_out", "force_out", "grounded_into_double_play", "fielders_choice") ~ "field_out",
-        TRUE ~ "field_out" # Catch-all fallback for rare batted ball events
-      ),
+      description == "hit_into_play" ~ "in_play",
       events == "walk" ~ "ball",
       events == "strikeout" ~ "whiff",
       

@@ -6,7 +6,7 @@ count_states <- c("0-0", "0-1", "0-2", "1-0", "1-1", "1-2", "2-0", "2-1", "2-2",
 
 # Subsample data safely
 set.seed(2026)
-max_rows <- 300000
+max_rows <- 700000
 if (nrow(pitch_data_filtered) > max_rows) {
   message("Subsampling training data to ", max_rows, " rows for memory efficiency...")
   training_subset <- pitch_data_filtered |> sample_n(max_rows)

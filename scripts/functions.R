@@ -33,16 +33,10 @@ build_matchup_cache <- function(pitcher_id, pitch_choice_models, stage1_models, 
   # Pitch Choice Grid
   pitch_grid <- expand_grid(
     count_state = count_states,
-    outs_state = outs_states,
-    base_state = base_states,
-    prev_pitch_type = c("NONE", valid_pitches),
     pitcher = pitcher_id
   ) |> 
     mutate(
       count_state = factor(count_state, levels = count_states),
-      outs_state = factor(outs_state, levels = outs_states),
-      base_state = factor(base_state, levels = base_states),
-      prev_pitch_type = factor(prev_pitch_type, levels = c("NONE", common_pitches)),
       pitcher = factor(pitcher)
     )
   
@@ -65,13 +59,11 @@ build_matchup_cache <- function(pitcher_id, pitch_choice_models, stage1_models, 
   stage1_grid <- expand_grid(
     count_state = count_states,
     pitch_type = valid_pitches,
-    prev_pitch_type = c("NONE", valid_pitches),
     pitcher = pitcher_id
   ) |> 
     mutate(
       count_state = factor(count_state, levels = count_states),
       pitch_type = factor(pitch_type, levels = common_pitches),
-      prev_pitch_type = factor(prev_pitch_type, levels = c("NONE", common_pitches)),
       pitcher = factor(pitcher)
     )
   
@@ -99,7 +91,6 @@ build_matchup_cache <- function(pitcher_id, pitch_choice_models, stage1_models, 
 simulate_at_bat <- function(cache, common_pitches, batter_id) {
   balls <- 0
   strikes <- 0
-  prev_pitch <- "NONE"
   pitch_sequence <- list()
   pitch_num <- 1
   
@@ -115,7 +106,7 @@ simulate_at_bat <- function(cache, common_pitches, batter_id) {
     
     # Sample Pitch Choice
     row_match <- cache$pitch |> 
-      filter(count_state == count_str, prev_pitch_type == prev_pitch)
+      filter(count_state == count_str)
     
     valid_cols <- intersect(cache_pitch_cols, colnames(row_match))
     
@@ -137,7 +128,7 @@ simulate_at_bat <- function(cache, common_pitches, batter_id) {
     
     # Pitch Result
     s1_match <- cache$stage1 |> 
-      filter(count_state == count_str, pitch_type == curr_pitch, prev_pitch_type == prev_pitch)
+      filter(count_state == count_str, pitch_type == curr_pitch)
     
     valid_s1_cols <- intersect(stage1_list, colnames(s1_match))
     
@@ -172,7 +163,7 @@ simulate_at_bat <- function(cache, common_pitches, batter_id) {
     } else if (s1_sampled == "in_play") {
       # Stage 2: Batted-Ball Sub-Model
       s2_match <- cache$stage2 |> 
-        filter(count_state == count_str, pitch_type == curr_pitch, prev_pitch_type == prev_pitch)
+        filter(count_state == count_str, pitch_type == curr_pitch)
       
       valid_s2_cols <- intersect(stage2_list, colnames(s2_match))
       
@@ -208,7 +199,6 @@ simulate_at_bat <- function(cache, common_pitches, batter_id) {
     pitch_sequence[[pitch_num]] <- tibble(
       batter_id    = batter_id,
       pitch_num    = pitch_num,
-      prev_pitch   = prev_pitch,
       pitch_type   = curr_pitch,
       count_before = count_before,
       outcome      = s1_sampled,
@@ -223,7 +213,6 @@ simulate_at_bat <- function(cache, common_pitches, batter_id) {
       ))
     }
     
-    prev_pitch <- curr_pitch
     pitch_num <- pitch_num + 1
   }
 }

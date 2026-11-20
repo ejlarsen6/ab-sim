@@ -1,6 +1,6 @@
 N_SIMS = 1000
 
-sample_pitcher_id <- get_player_id("Aaron Ashby")
+sample_pitcher_id <- get_player_id("Brayan Bello")
 cubs_lineup <- get_team_lineup("CHC", pitch_data)
 
 
